@@ -1,0 +1,6 @@
+.env
+.admin_credentials
+logs/
+__pycache__/
+*.pyc
+.DS_Store

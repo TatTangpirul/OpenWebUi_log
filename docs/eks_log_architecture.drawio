@@ -1,0 +1,200 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="EKS Log Monitoring Architecture" id="eks-log-arch">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="2000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Lane: User -->
+        <mxCell id="lane_user" value="User" style="swimlane;horizontal=0;whiteSpace=wrap;html=1;startSize=30;fillColor=#f5f5f5;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="200" height="1800" as="geometry" />
+        </mxCell>
+
+        <!-- Lane: OpenWebUI -->
+        <mxCell id="lane_owui" value="OpenWebUI (Tool / LLM orchestration)" style="swimlane;horizontal=0;whiteSpace=wrap;html=1;startSize=30;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="640" height="1800" as="geometry" />
+        </mxCell>
+
+        <!-- Lane: Middleware -->
+        <mxCell id="lane_mw" value="Middleware (kubernetes python client)" style="swimlane;horizontal=0;whiteSpace=wrap;html=1;startSize=30;fillColor=#d5e8d4;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="320" height="1800" as="geometry" />
+        </mxCell>
+
+        <!-- Lane: EKS -->
+        <mxCell id="lane_eks" value="EKS Cluster (namespaces / pods)" style="swimlane;horizontal=0;whiteSpace=wrap;html=1;startSize=30;fillColor=#ffe6cc;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="40" width="280" height="1800" as="geometry" />
+        </mxCell>
+
+        <!-- User: ask question -->
+        <mxCell id="u1" value="Ask about system(s)/service(s)&#10;e.g. &quot;check auth-service&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_user">
+          <mxGeometry x="20" y="60" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- OWUI: inlet() hook -->
+        <mxCell id="o0" value="inlet() hook — runs before EVERY LLM call&#10;calls middleware GET /discover to refresh injected list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;dashed=1;" vertex="1" parent="lane_owui">
+          <mxGeometry x="60" y="60" width="480" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- OWUI: list_namespaces_and_services tool -->
+        <mxCell id="o1" value="Tool: list_namespaces_and_services()&#10;calls middleware GET /discover (same cached endpoint)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_owui">
+          <mxGeometry x="60" y="170" width="480" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Decision: what did user mention -->
+        <mxCell id="d1" value="Parse request:&#10;service name(s) and/or namespace(s) mentioned?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="lane_owui">
+          <mxGeometry x="180" y="290" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Branch: service name only -->
+        <mxCell id="d2" value="Service name(s) mentioned,&#10;no namespace given" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="lane_owui">
+          <mxGeometry x="20" y="450" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d3" value="Is the service name&#10;unique across all namespaces?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="lane_owui">
+          <mxGeometry x="20" y="580" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o2" value="Resolve to (namespace, service) pair&#10;and query logs one-by-one per service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_owui">
+          <mxGeometry x="20" y="720" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o3" value="Ambiguous: prompt user&#10;&quot;which namespace did you mean?&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" vertex="1" parent="lane_owui">
+          <mxGeometry x="280" y="580" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Branch: namespace only -->
+        <mxCell id="o4" value="Namespace(s) mentioned only&#10;-&gt; fetch logs for all services in namespace(s)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_owui">
+          <mxGeometry x="280" y="450" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Branch: neither -->
+        <mxCell id="o5b" value="Neither resolvable&#10;-&gt; ask user to be more specific" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" vertex="1" parent="lane_owui">
+          <mxGeometry x="440" y="340" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Converge: call middleware -->
+        <mxCell id="o6" value="Call middleware:&#10;get_logs(targets=[(namespace, service|None), ...])" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_owui">
+          <mxGeometry x="130" y="830" width="380" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o7" value="Receive per-target results (ok/error, truncation label)&#10;return them to the user as-is (no analytics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_owui">
+          <mxGeometry x="130" y="1110" width="380" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Middleware -->
+        <mxCell id="m1" value="Auth via k8s ServiceAccount&#10;(load_incluster_config / load_kube_config)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="60" width="260" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m0" value="GET /discover&#10;list namespaces + services (allow-list scoped only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="200" width="260" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m0b" value="TTL cache (30-60s), lazy refresh&#10;RBAC: per-namespace RoleBinding, no ClusterRole" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="300" width="260" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2" value="For each (namespace, service) target&#10;IN PARALLEL (bounded thread pool):&#10;list_namespaced_pod(label_selector)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="740" width="260" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m3" value="read_namespaced_pod_log()&#10;per matching pod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="860" width="260" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m4" value="Merge lines; apply flat per-target line cap&#10;label truncation; return per-target ok/error&#10;(no filtering/analytics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_mw">
+          <mxGeometry x="20" y="950" width="260" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- EKS -->
+        <mxCell id="e1" value="kube-apiserver" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_eks">
+          <mxGeometry x="20" y="760" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="Namespace(s)&#10;-&gt; Deployments -&gt; Pods" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="lane_eks">
+          <mxGeometry x="20" y="860" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Edges within OpenWebUI lane -->
+        <mxCell id="e_o1_d1" edge="1" parent="lane_owui" source="o1" target="d1" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d1_d2" value="service only" edge="1" parent="lane_owui" source="d1" target="d2" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d1_o4" value="namespace only" edge="1" parent="lane_owui" source="d1" target="o4" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d1_o5b" value="neither" edge="1" parent="lane_owui" source="d1" target="o5b" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d2_d3" edge="1" parent="lane_owui" source="d2" target="d3" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d3_o2" value="unique" edge="1" parent="lane_owui" source="d3" target="o2" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_d3_o3" value="ambiguous" edge="1" parent="lane_owui" source="d3" target="o3" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o2_o6" edge="1" parent="lane_owui" source="o2" target="o6" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o4_o6" edge="1" parent="lane_owui" source="o4" target="o6" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Cross-lane edges -->
+        <mxCell id="e_u1_o1" edge="1" parent="1" source="u1" target="o1" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o3_u1" value="ask for namespace" edge="1" parent="1" source="o3" target="u1" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" >
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o5b_u1" value="ask to be specific" edge="1" parent="1" source="o5b" target="u1" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o0_m0" value="GET /discover&#10;(every chat turn, cheap due to cache)" edge="1" parent="1" source="o0" target="m0" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o1_m0" value="GET /discover" edge="1" parent="1" source="o1" target="m0" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o6_m1" value="HTTP request (via kubectl port-forward, dev only&#10;no external exposure/auth yet):&#10;list of (namespace, service) targets" edge="1" parent="1" source="o6" target="m1" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m1_m0" edge="1" parent="lane_mw" source="m1" target="m0" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m0_m0b" edge="1" parent="lane_mw" source="m0" target="m0b" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m1_m2" edge="1" parent="lane_mw" source="m1" target="m2" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m2_e1" edge="1" parent="1" source="m2" target="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_e1_e2" edge="1" parent="lane_eks" source="e1" target="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_e2_m3" value="pod list" edge="1" parent="1" source="e2" target="m3" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m3_e1" value="read_namespaced_pod_log" edge="1" parent="1" source="m3" target="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_e1_m4" value="log lines" edge="1" parent="1" source="e1" target="m4" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m4_o7" value="raw log text" edge="1" parent="1" source="m4" target="o7" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_o7_u1" value="display logs" edge="1" parent="1" source="o7" target="u1" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
