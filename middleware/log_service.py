@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 import subprocess
 
 # Namespaces this middleware is allowed to touch. RBAC (RoleBinding per
@@ -107,4 +108,51 @@ def get_pod_logs(namespace: str, service: str, minutes: int = 60) -> dict[str, A
         {"ok": True, "namespace": namespace, "service": service, "results": {...}}
         or {"ok": False, "error": "..."}
     """
-    raise NotImplementedError
+    if namespace not in NAMESPACE_ALLOWLIST:
+        return {"ok": False, "error": f"Namespace '{namespace}' is not allow-listed"}
+
+    try:
+        all_pods = core_v1.list_namespaced_pod(namespace).items
+    except ApiException as e:
+        return {"ok": False, "error": f"Failed to list pods in namespace '{namespace}': {e.reason}"}
+
+    # Not every chart in this cluster labels pods the same way: some Helm charts set
+    # app.kubernetes.io/name to the service name directly; others (e.g. the 7deli-rag-api
+    # chart backing rag-api-sod/rag-api-hr) share one chart-wide name and instead
+    # distinguish services via app.kubernetes.io/component. Legacy app= is also still seen.
+    # Checked against real pods in seven-deli-chat-dev before picking these three keys.
+    pods = [
+        pod
+        for pod in all_pods
+        if service
+        in (
+            (pod.metadata.labels or {}).get("app.kubernetes.io/component"),
+            (pod.metadata.labels or {}).get("app.kubernetes.io/name"),
+            (pod.metadata.labels or {}).get("app"),
+        )
+    ]
+
+    if not pods:
+        return {"ok": False, "error": f"No pods found for service '{service}' in namespace '{namespace}'"}
+
+    def fetch(pod_name: str) -> tuple[str, str]:
+        try:
+            log = core_v1.read_namespaced_pod_log(
+                name=pod_name, namespace=namespace, since_seconds=minutes * 60
+            )
+            # kubernetes-client quirk (verified against this cluster): an empty log body
+            # comes back as the literal string "b''" — str() of empty bytes — rather than
+            # "". Normalize so an empty window reads as "no logs", not leftover bytes-repr.
+            if log == "b''":
+                log = ""
+        except ApiException as e:
+            log = f"<error fetching logs: {e.reason}>"
+        return pod_name, log
+
+    pod_names = [pod.metadata.name for pod in pods]
+    logs: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=min(len(pod_names), 8)) as pool:
+        for pod_name, output in pool.map(fetch, pod_names):
+            logs[pod_name] = output
+
+    return {"ok": True, "namespace": namespace, "service": service, "results": logs}
