@@ -2,6 +2,7 @@
 EKS log middleware — sits between OpenWebUI and the Kubernetes API.
 Uses the official kubernetes python client (no kubectl subprocess).
 """
+import ast
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -96,6 +97,20 @@ def get_namespace_logs(namespace: str, minutes: int = 60) -> dict[str, Any]:
     return {"ok": True, "namespace": namespace, "results": logs}
 
 
+def _unwrap_bytes_repr(log: str) -> str:
+    """
+    kubernetes-client quirk, verified against this cluster (kubernetes==36.0.2): every
+    read_namespaced_pod_log body — empty or not — comes back as str(<bytes>) instead of a
+    properly-decoded string, e.g. "b'INFO: ...\\n...'" with escaped newlines, rather than
+    the real text with real newlines. ast.literal_eval reverses exactly what str(bytes)
+    produced (undoing the \\n/\\t/quote escaping per Python bytes-literal syntax), then we
+    decode the recovered bytes as UTF-8 to get the real log text back.
+    """
+    if log.startswith("b'") and log.endswith("'"):
+        return ast.literal_eval(log).decode("utf-8")
+    return log
+
+
 def get_pod_logs(namespace: str, service: str, minutes: int = 60) -> dict[str, Any]:
     """
     Fetch recent logs for one specific service (label-selected deployment)
@@ -140,11 +155,7 @@ def get_pod_logs(namespace: str, service: str, minutes: int = 60) -> dict[str, A
             log = core_v1.read_namespaced_pod_log(
                 name=pod_name, namespace=namespace, since_seconds=minutes * 60
             )
-            # kubernetes-client quirk (verified against this cluster): an empty log body
-            # comes back as the literal string "b''" — str() of empty bytes — rather than
-            # "". Normalize so an empty window reads as "no logs", not leftover bytes-repr.
-            if log == "b''":
-                log = ""
+            log = _unwrap_bytes_repr(log)
         except ApiException as e:
             log = f"<error fetching logs: {e.reason}>"
         return pod_name, log
