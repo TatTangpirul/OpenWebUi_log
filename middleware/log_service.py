@@ -83,7 +83,7 @@ def get_namespace_logs(namespace: str, minutes: int = 60) -> dict[str, Any]:
 
     def fetch(pod: str) -> tuple[str, str]:
         result = subprocess.run(
-            ["cmd/get_log.sh", pod, namespace], capture_output=True, text=True
+            ["cmd/get_log.sh", pod, namespace, str(minutes)], capture_output=True, text=True
         )
         return pod, result.stdout
 
